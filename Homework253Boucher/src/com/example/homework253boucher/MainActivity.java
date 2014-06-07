@@ -13,16 +13,23 @@ import android.view.MenuItem;
 public class MainActivity extends Activity {
 
 	public static final String TAG = "steve-activity";
+	public static final String BUTTON_FRAGMENT = "buttonFrag";
+	private ButtonFragment mButtonFragment;
 	
 	@Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
+        
         if (savedInstanceState == null) {
+        	Log.v(TAG, "onCreate() called, savedInstanceState is null");
+            mButtonFragment = new ButtonFragment();
+
             getFragmentManager().beginTransaction()
-                    .add(R.id.container, new ButtonFragment())
+                    .add(R.id.container, mButtonFragment, BUTTON_FRAGMENT)
                     .commit();
+        } else {
+        	Log.v(TAG, "onCreate() called, savedInstanceState has a VALUE");
         }
     }
 
@@ -38,7 +45,7 @@ public class MainActivity extends Activity {
         getMenuInflater().inflate(R.menu.main, menu);
         return true;
     }
-
+	
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle action bar item clicks here. The action bar will
@@ -49,5 +56,26 @@ public class MainActivity extends Activity {
             return true;
         }
         return super.onOptionsItemSelected(item);
-    } 
+    }
+
+	@Override
+	public void onBackPressed() {
+		// Notify fragment that we are exiting
+    	ButtonFragment mButtonFragment = (ButtonFragment) getFragmentManager().findFragmentByTag(BUTTON_FRAGMENT);
+    	
+    	if (mButtonFragment != null) {
+        	Log.v(TAG, "onBackPressed() called, mButtonFragment is VALID");
+    		mButtonFragment.appIsExiting(true);
+    	} else {
+        	Log.e(TAG, "onBackPressed() called, mButtonFragment is NULL!!");
+    	}
+		super.onBackPressed();
+	} 
+    
+	@Override public void onStart() { super.onStart(); Log.d( TAG, "onStart() called"); }	
+	@Override public void onPause() { super.onPause(); Log.d( TAG, "onPause() called"); }	
+	@Override public void onResume() { super.onResume(); Log.d( TAG, "onResume() called"); }	
+	@Override public void onStop() { super.onStop(); Log.d( TAG, "onStop() called"); } 	
+	@Override public void onDestroy() { super.onDestroy(); Log.d( TAG, "onDestroy() called"); 
+	}    
 }

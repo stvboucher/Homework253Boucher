@@ -24,7 +24,8 @@ public class ButtonFragment extends Fragment implements OnClickListener{
 	private static final String TAG = "steve-fragment";
 	private static final int NOTIFICATION_ID = 111;
 	
-	private boolean mIsBeeping;
+	private boolean mIsBeeping = false;
+	private boolean mIsExiting = false;
 	Button mStartStopButton;
 	private NotificationManager mNotificationManager;
 	private Notification mNotification;
@@ -37,19 +38,13 @@ public class ButtonFragment extends Fragment implements OnClickListener{
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
             Bundle savedInstanceState) {
+    	Log.v(TAG, "fragment onCreateView()");
+
         View rootView = inflater.inflate(R.layout.fragment_main, container, false);
         
         mStartStopButton = (Button)rootView.findViewById(R.id.start_stop_button);
         mStartStopButton.setOnClickListener(this);
           
-        if (savedInstanceState != null) {
-        	Log.v(TAG, "fragment savedInstanceState has a VALUE");
-            boolean isBeeping = savedInstanceState.getBoolean(IS_BEEPING, false);
-            setBeepingState(isBeeping);
-            
-        } else {
-        	Log.v(TAG, "fragment savedInstanceState is NULL");
-        }
         return rootView;
     } 
           
@@ -58,11 +53,15 @@ public class ButtonFragment extends Fragment implements OnClickListener{
         super.onActivityCreated(savedInstanceState);
 
         if (savedInstanceState != null) {
-        	Log.v(TAG, "fragment onActivityCreated() savedInstanceState has a VALUE");
+        	Log.v(TAG, "fragment onActivityCreated(): savedInstanceState has a VALUE");
             boolean isBeeping = savedInstanceState.getBoolean(IS_BEEPING, false);
+            // Restart beep, if necessary
+    		if (isBeeping) {
+    			playBeep(true);		
+    		} 
             setBeepingState(isBeeping);
         } else {
-        	Log.v(TAG, "fragments onActivityCreated() savedInstanceState is NULL");
+        	Log.v(TAG, "fragments onActivityCreated(): savedInstanceState is NULL");
         }
        
         mNotificationManager = (NotificationManager) getActivity().getSystemService(Context.NOTIFICATION_SERVICE);
@@ -85,8 +84,28 @@ public class ButtonFragment extends Fragment implements OnClickListener{
 	}  
 
 	@Override public void onStart() { super.onStart(); Log.d( TAG, "onStart() called"); } 
-	@Override public void onPause() { super.onPause(); Log.d( TAG, "onPause() called"); }
-	@Override public void onResume() { super.onResume(); Log.d( TAG, "onResume() called"); } 
+	
+	@Override public void onPause() { 
+		super.onPause(); 
+		Log.d( TAG, "onPause() called, mIsBeeping is " + mIsBeeping + "mIsExiting is " + mIsExiting);
+		
+		// Checking mIsExiting to prevent the situation where the notification icon flashes
+		// momentarily in the status bar just before it app exits -- e.g., due to a user back
+		// button press		
+		if (mIsBeeping == true && mIsExiting == false) {
+        	showNotificationIcon(true);
+        }
+	}	
+	
+	@Override public void onResume() { 
+		super.onResume(); 
+		Log.d( TAG, "onResume() called"); 
+		
+		// Requirements are that the notification icon not be shown when this app is
+		// in the foreground, regardless of beep state, so make sure that it is gone
+		showNotificationIcon(false);	
+	}
+	
 	@Override public void onStop() { super.onStop(); Log.d( TAG, "onStop() called"); } 
 	
 	@Override 
@@ -98,9 +117,8 @@ public class ButtonFragment extends Fragment implements OnClickListener{
 			beepTask = null;			
 		} else {
 			Log.d( TAG, "beepTask is NULL in onDestroy()"); 			
-		}
-		
-		updateNotificationArea(false);
+		}	
+		showNotificationIcon(false);
     	setBeepingState(false);	
 	} 
 
@@ -108,7 +126,6 @@ public class ButtonFragment extends Fragment implements OnClickListener{
 	@Override
 	public void onSaveInstanceState(Bundle outState) {
 		super.onSaveInstanceState(outState);
-
 		Log.v(TAG, "fragment onSaveInstanceState() called");
 
 		outState.putBoolean(IS_BEEPING, mIsBeeping);
@@ -132,10 +149,11 @@ public class ButtonFragment extends Fragment implements OnClickListener{
         		beepTask.execute();
     		}
 		} else {
-			beepTask.cancel(true);
-			beepTask = null;
-        	updateNotificationArea(false);
-			setBeepingState(false);	       	
+			if (beepTask != null) {
+				beepTask.cancel(true);
+				beepTask = null;
+				setBeepingState(false);	  
+			}
 		}	
 	}
 
@@ -152,16 +170,22 @@ public class ButtonFragment extends Fragment implements OnClickListener{
 	}
    
     // Post-req: setBeepingState() should be called AFTER this function
-	private void updateNotificationArea(boolean isBeeping) {
-		if (isBeeping == true) {
-        	Log.v(TAG, "updateNotificationArea(): mNotificationManager.NOTIFY");
-
+	private void showNotificationIcon(boolean showIcon) {
+		// If isBeeping is true, do nothing
+		if (showIcon == true) {
+        	Log.v(TAG, "showNotificationIcon(): showing icon");			
         	mNotificationManager.notify(NOTIFICATION_ID, mNotification);
-		} else {
-        	Log.v(TAG, "updateNotificationArea(): mNotificationManager.cancel");
-			
+		}
+		else {
+        	Log.v(TAG, "showNotificationIcon(): removing icon");			
 			mNotificationManager.cancel(NOTIFICATION_ID);
 		}
+	}
+	
+	protected void appIsExiting(boolean isExiting) {
+    	Log.v(TAG, "appIsExiting(): isExiting is " + isExiting);			
+		
+		mIsExiting = isExiting;
 	}
 	
     private class BeepTask extends AsyncTask<Void, Boolean, Void> {
@@ -178,15 +202,13 @@ public class ButtonFragment extends Fragment implements OnClickListener{
                 try {
                 	// Play beep
                 	if (mMediaPlayer != null) {
-                		mMediaPlayer.start();                		
+                		mMediaPlayer.start(); 
+                		publishProgress(true);
                 	} else {
                     	Log.i(TAG, "mMediaPlayer is null! Can't play beep!");
+                    	publishProgress(false);
                     	break;
-                	}
-                    
-                    // Ensure that notification area indicates beeping is in progress
-                    publishProgress(true);
-
+                	}                    
                     Thread.sleep(5000);
                 }
                 catch (InterruptedException e) {
@@ -208,21 +230,16 @@ public class ButtonFragment extends Fragment implements OnClickListener{
         		mMediaPlayer.reset();
         		mMediaPlayer = null;
         	}
-        	updateNotificationArea(false);
+        	showNotificationIcon(false);
         	setBeepingState(false);
 
         	super.onPostExecute(result);
         }
 
         @Override
-        // Update the UI
-        protected void onProgressUpdate(Boolean... values) {    
+        protected void onProgressUpdate(Boolean... values) {  
         	boolean isBeeping = values[0];
-        	Log.v(TAG, "fragment onProgressUpdate()...., isBeeping is " + isBeeping);
-
-        	updateNotificationArea(isBeeping);
-        	setBeepingState(isBeeping);        	
-        	
+        	setBeepingState(isBeeping);
             super.onProgressUpdate(values);
         }
 
@@ -234,11 +251,10 @@ public class ButtonFragment extends Fragment implements OnClickListener{
         		mMediaPlayer.reset();
         		mMediaPlayer = null;
         	}
-	       	updateNotificationArea(false);
+	       	showNotificationIcon(false);
 	       	setBeepingState(false);
 	       	
 			super.onCancelled(result);			
-		}       
-        
+		}
     }
 }
